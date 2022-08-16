@@ -1,0 +1,7 @@
+numpy==1.21.2
+opencv_python==4.5.3.56
+pytorch3d==0.6.1
+pytorch_msssim==0.2.1
+torch==1.9.0+cu111
+torchvision==0.10.0+cu111
+tqdm==4.62.3

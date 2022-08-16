@@ -1,6 +1,5 @@
 import inspect
 import cv2
-import open3d as o3d
 import numpy as np
 import torch
 import time
@@ -102,113 +101,6 @@ def update_lr(comment, optimizer_gen):
 
 visualizer = None
 ply = None
-
-
-def view_uv3d(mesh, mask, color_bgr):
-    '''
-    mesh: [N x N x 3]
-    mask: [N x N]
-    color_bgr: [N x N x 3]
-    '''
-    global visualizer
-    if visualizer is None:
-        visualizer = o3d.visualization.Visualizer()
-        visualizer.create_window(height=mesh.shape[0], width=mesh.shape[1])
-
-    pcd = o3d.geometry.PointCloud()
-
-    uv3d = mesh[mask == 1]
-    pcd.points = o3d.utility.Vector3dVector(uv3d)
-
-    diffuse = color_bgr[mask == 1]
-    pcd.colors = o3d.utility.Vector3dVector(diffuse[..., ::-1])
-
-    visualizer.clear_geometries()
-    visualizer.add_geometry(pcd)
-
-    visualizer.run()
-    img = np.asarray(visualizer.capture_screen_float_buffer())[..., ::-1]
-
-    return img
-
-
-def view_uv3d_mesh(mesh, mask, color_bgr=None, size=None):
-    '''
-    mesh: [N x N x 3]
-    mask: [N x N]
-    color_bgr: [N x N x 3]
-    '''
-    start = time.time()
-    global visualizer, ply
-    if visualizer is None:
-        visualizer = o3d.visualization.Visualizer()
-        if size is None:
-            height, width = mesh.shape[:2]
-        else:
-            width, height = size
-        visualizer.create_window(height=height, width=width)
-        view_uv3d_mesh.width = width
-        view_uv3d_mesh.height = height
-
-    if ply is None:
-        ply = o3d.geometry.TriangleMesh()
-
-        vertex_id = np.zeros(mask.shape, int)
-        vertex_id[:] = -1
-        vertex_id[mask == 1] = range((mask == 1).sum())
-
-        faces = []
-        uvs = []
-
-        def ij2uv(i, j):
-            return (j + 0.5) / mask.shape[1], (i + 0.5) / mask.shape[0]
-        for i in range(mask.shape[0] - 1):
-            for j in range(mask.shape[1] - 1):
-                if vertex_id[i, j] >= 0 and vertex_id[i, j + 1] >= 0 and vertex_id[i + 1, j] >= 0:
-                    faces.append((vertex_id[i, j], vertex_id[i, j + 1], vertex_id[i + 1, j]))
-                    uvs.extend((ij2uv(i, j), ij2uv(i, j + 1), ij2uv(i + 1, j)))
-                if vertex_id[i + 1, j + 1] >= 0 and vertex_id[i + 1, j] >= 0 and vertex_id[i, j + 1] >= 0:
-                    faces.append((vertex_id[i + 1, j + 1], vertex_id[i + 1, j], vertex_id[i, j + 1]))
-                    uvs.extend((ij2uv(i + 1, j + 1), ij2uv(i + 1, j), ij2uv(i, j + 1)))
-
-        ply.triangles = o3d.utility.Vector3iVector(faces)
-        ply.triangle_uvs = o3d.utility.Vector2dVector(uvs)
-        ply.triangle_material_ids = o3d.utility.IntVector([0] * len(faces))
-
-    uv3d = mesh[mask == 1]
-    ply.vertices = o3d.utility.Vector3dVector(uv3d)
-    ply_smoothed = ply.filter_smooth_simple(number_of_iterations=1)
-    ply_smoothed.triangle_uvs = ply.triangle_uvs
-    ply_smoothed.triangle_material_ids = ply.triangle_material_ids
-    ply = ply_smoothed
-
-    ply.compute_vertex_normals()
-
-    if color_bgr is not None:
-        ply.textures = [o3d.geometry.Image((color_bgr[..., ::-1] * 255).astype(np.uint8).copy())]
-
-    visualizer.clear_geometries()
-    visualizer.add_geometry(ply)
-
-    if True:
-        c = visualizer.get_view_control().convert_to_pinhole_camera_parameters()
-        fx = 1000 / 256 * view_uv3d_mesh.width
-        c.intrinsic.set_intrinsics(view_uv3d_mesh.width, view_uv3d_mesh.height, fx, fx, view_uv3d_mesh.width / 2 - 0.5, view_uv3d_mesh.height / 2 - 0.5)
-        c.extrinsic = np.array([
-            [-1, 0, 0, 0],
-            [0, -1, 0, 0],
-            [0, 0, -1, 7],
-            [0, 0, 0, 1],
-        ])
-        visualizer.get_view_control().convert_from_pinhole_camera_parameters(c)
-        visualizer.get_render_option().mesh_shade_option = o3d.visualization.MeshShadeOption.Color
-        visualizer.get_render_option().light_on = False
-
-    visualizer.run()
-    img = np.asarray(visualizer.capture_screen_float_buffer())[..., ::-1]
-
-    print("view cost", time.time() - start)
-    return img
 
 
 def axis_angle_to_quaternion(axis_angle):
@@ -532,7 +424,6 @@ def check_loader_latency(position):
         print("latency =", now - last_batch_end_time)
     elif position == "end":
         setattr(check_loader_latency, "last_batch_end_time", time.time())
-
 
 
 def while_map(x, black=True):
